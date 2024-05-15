@@ -682,6 +682,12 @@ impl Instance {
             .as_ref()
             .expect("KHR_visibility_mask not loaded")
     }
+    pub(crate) fn controller_model_msft(&self) -> &raw::ControllerModelMSFT {
+        self.exts()
+            .msft_controller_model
+            .as_ref()
+            .expect("MSFT_controller_model not loaded")
+    }
 }
 
 struct InstanceInner {

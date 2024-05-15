@@ -1,6 +1,11 @@
 use std::mem::MaybeUninit;
 use std::{marker::PhantomData, ptr, sync::Arc};
 
+use sys::{
+    ControllerModelKeyMSFT, ControllerModelKeyStateMSFT, ControllerModelPropertiesMSFT,
+    ControllerModelStateMSFT,
+};
+
 use crate::*;
 
 pub(crate) type DropGuard = Box<dyn std::any::Any + Send + Sync>;
@@ -309,6 +314,151 @@ impl<G> Session<G> {
     }
 
     #[inline]
+    /// Gets the [`ControllerModelKeyMSFT`] for a controller.
+    ///
+    /// Requires MSFT_controller_model
+    pub fn get_controller_model_key_msft(
+        &self,
+        top_level_user_path: Path,
+    ) -> Result<ControllerModelKeyMSFT> {
+        unsafe {
+            let mut out = ControllerModelKeyStateMSFT::out(ptr::null_mut());
+            cvt((self
+                .instance()
+                .controller_model_msft()
+                .get_controller_model_key)(
+                self.as_raw(),
+                top_level_user_path,
+                out.as_mut_ptr(),
+            ))?;
+            Ok(out.assume_init().model_key)
+        }
+    }
+
+    #[inline]
+    /// Loads the controller model as a byte buffer containing the binary form of a glTF 2.0 model.
+    ///
+    /// Requires MSFT_controller_model
+    pub fn load_controller_model_msft(&self, model_key: ControllerModelKeyMSFT) -> Result<Vec<u8>> {
+        get_arr(|cap, count, buf| unsafe {
+            (self
+                .instance()
+                .controller_model_msft()
+                .load_controller_model)(self.as_raw(), model_key, cap, count, buf)
+        })
+    }
+
+    /// Returns an array of [`ControllerModelNodeProperties`] with the names of the nodes.
+    ///
+    /// Requires MSFT_controller_model
+    ///
+    /// See also `Session::get_controller_model_state_msft`
+    pub fn get_controller_model_properties_msft(
+        &self,
+        model_key: ControllerModelKeyMSFT,
+    ) -> Result<Vec<ControllerModelNodeProperties>> {
+        let mut properties = ControllerModelPropertiesMSFT {
+            ty: ControllerModelPropertiesMSFT::TYPE,
+            next: ptr::null_mut(),
+            node_capacity_input: 0,
+            node_count_output: 0,
+            node_properties: ptr::null_mut(),
+        };
+        unsafe {
+            cvt((self
+                .instance()
+                .controller_model_msft()
+                .get_controller_model_properties)(
+                self.as_raw(),
+                model_key,
+                &mut properties,
+            ))?;
+
+            let mut raw = Vec::with_capacity(properties.node_count_output as usize);
+
+            loop {
+                properties.node_properties = raw.as_mut_ptr();
+                properties.node_capacity_input = raw.capacity() as u32;
+                match cvt((self
+                    .instance()
+                    .controller_model_msft()
+                    .get_controller_model_properties)(
+                    self.as_raw(),
+                    model_key,
+                    &mut properties,
+                )) {
+                    Ok(_) => {
+                        raw.set_len(properties.node_count_output as usize);
+                        break;
+                    }
+                    Err(sys::Result::ERROR_SIZE_INSUFFICIENT) => raw.reserve(
+                        (properties.node_count_output as usize).saturating_sub(raw.capacity()),
+                    ),
+                    Err(e) => return Err(e),
+                }
+            }
+            Ok(raw
+                .into_iter()
+                .map(|node_properties| ControllerModelNodeProperties {
+                    parent_node_name: fixed_str(&node_properties.parent_node_name).into(),
+                    node_name: fixed_str(&node_properties.node_name).into(),
+                })
+                .collect())
+        }
+    }
+
+    /// Returns an array of positions for each node. The indices of each pose corresponds to the indices of each node's properties in `Session::get_controller_model_properties_msft`
+    ///
+    /// Requires MSFT_controller_model
+    pub fn get_controller_model_state_msft(
+        &self,
+        model_key: ControllerModelKeyMSFT,
+    ) -> Result<Vec<Posef>> {
+        let mut state = ControllerModelStateMSFT {
+            ty: ControllerModelStateMSFT::TYPE,
+            next: ptr::null_mut(),
+            node_capacity_input: 0,
+            node_count_output: 0,
+            node_states: ptr::null_mut(),
+        };
+        unsafe {
+            cvt((self
+                .instance()
+                .controller_model_msft()
+                .get_controller_model_state)(
+                self.as_raw(),
+                model_key,
+                &mut state,
+            ))?;
+
+            let mut raw = Vec::with_capacity(state.node_count_output as usize);
+
+            loop {
+                state.node_states = raw.as_mut_ptr();
+                state.node_capacity_input = raw.capacity() as u32;
+                match cvt((self
+                    .instance()
+                    .controller_model_msft()
+                    .get_controller_model_state)(
+                    self.as_raw(), model_key, &mut state
+                )) {
+                    Ok(_) => {
+                        raw.set_len(state.node_count_output as usize);
+                        break;
+                    }
+                    Err(sys::Result::ERROR_SIZE_INSUFFICIENT) => raw
+                        .reserve((state.node_count_output as usize).saturating_sub(raw.capacity())),
+                    Err(e) => return Err(e),
+                }
+            }
+            Ok(raw
+                .into_iter()
+                .map(|node_state| node_state.node_pose)
+                .collect())
+        }
+    }
+
+    #[inline]
     /// Create a hand tracker
     ///
     /// Requires [`XR_EXT_hand_tracking`](https://www.khronos.org/registry/OpenXR/specs/1.0/html/xrspec.html#XR_EXT_hand_tracking)
@@ -462,6 +612,13 @@ impl<G: Graphics> Session<G> {
 pub struct VisibilityMask {
     pub vertices: Vec<Vector2f>,
     pub indices: Vec<u32>,
+}
+
+/// Controller model node properties obtained from `Session::get_controller_model_properties_msft`
+#[derive(Debug, Clone)]
+pub struct ControllerModelNodeProperties {
+    pub parent_node_name: String,
+    pub node_name: String,
 }
 
 impl<G> Clone for Session<G> {
