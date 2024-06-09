@@ -16,6 +16,15 @@ pub struct Session<G> {
 }
 
 impl<G> Session<G> {
+    /// Manually drop the session
+    pub fn drop(&self) -> Result<sys::Result> {
+        unsafe {
+            cvt((self.inner.instance.fp().destroy_session)(
+                self.inner.handle,
+            ))
+        }
+    }
+
     /// Access the raw session handle
     #[inline]
     pub fn as_raw(&self) -> sys::Session {
@@ -463,6 +472,7 @@ impl<G: Graphics> Session<G> {
                 instance,
                 handle,
                 _drop_guard: drop_guard,
+                dropped: false,
             }),
             _marker: PhantomData,
         };
@@ -565,12 +575,15 @@ pub(crate) struct SessionInner {
     pub(crate) instance: Instance,
     pub(crate) handle: sys::Session,
     pub(crate) _drop_guard: DropGuard,
+    pub(crate) dropped: bool,
 }
 
 impl Drop for SessionInner {
     fn drop(&mut self) {
-        unsafe {
-            (self.instance.fp().destroy_session)(self.handle);
+        if !self.dropped {
+            unsafe {
+                (self.instance.fp().destroy_session)(self.handle);
+            }
         }
     }
 }

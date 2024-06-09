@@ -20,9 +20,12 @@ impl FoveationProfileFB {
     ///
     /// `handle` must be a valid foveation profile handle created with a [Session] associated with `instance`.
     #[inline]
-    pub unsafe fn from_raw(instance: Instance, handle: sys::FoveationProfileFB) -> Self {
+    pub unsafe fn from_raw<G>(session: &Session<G>, handle: sys::FoveationProfileFB) -> Self {
         Self {
-            inner: Arc::new(FoveationProfileFBInner { instance, handle }),
+            inner: Arc::new(FoveationProfileFBInner {
+                handle,
+                session: session.inner.clone(),
+            }),
         }
     }
 
@@ -66,19 +69,21 @@ impl<G> Session<G> {
             unsafe { (fp.create_foveation_profile)(self.as_raw(), &mut create_info, &mut profile) };
         cvt(res)?;
 
-        Ok(unsafe { FoveationProfileFB::from_raw(self.instance().clone(), profile) })
+        Ok(unsafe { FoveationProfileFB::from_raw(&self, profile) })
     }
 }
 
 struct FoveationProfileFBInner {
-    instance: Instance,
+    session: Arc<SessionInner>,
     handle: sys::FoveationProfileFB,
 }
 
 impl Drop for FoveationProfileFBInner {
     fn drop(&mut self) {
-        if let Some(fp) = self.instance.exts().fb_foveation.as_ref() {
-            unsafe { (fp.destroy_foveation_profile)(self.handle) };
+        if !self.session.dropped {
+            if let Some(fp) = self.session.instance.exts().fb_foveation.as_ref() {
+                unsafe { (fp.destroy_foveation_profile)(self.handle) };
+            }
         }
     }
 }
