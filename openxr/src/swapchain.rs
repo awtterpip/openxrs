@@ -126,8 +126,10 @@ impl<G: Graphics> Swapchain<G> {
 
 impl<G: Graphics> Drop for Swapchain<G> {
     fn drop(&mut self) {
-        unsafe {
-            (self.fp().destroy_swapchain)(self.as_raw());
+        if !self.session.inner.dropped() {
+            unsafe {
+                (self.fp().destroy_swapchain)(self.as_raw());
+            }
         }
     }
 }

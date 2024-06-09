@@ -80,7 +80,7 @@ struct FoveationProfileFBInner {
 
 impl Drop for FoveationProfileFBInner {
     fn drop(&mut self) {
-        if !self.session.dropped {
+        if !self.session.dropped() {
             if let Some(fp) = self.session.instance.exts().fb_foveation.as_ref() {
                 unsafe { (fp.destroy_foveation_profile)(self.handle) };
             }

@@ -213,7 +213,7 @@ impl Space {
 
 impl Drop for Space {
     fn drop(&mut self) {
-        if !self.session.dropped {
+        if !self.session.dropped() {
             unsafe {
                 (self.fp().destroy_space)(self.handle);
             }

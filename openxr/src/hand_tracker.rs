@@ -72,7 +72,7 @@ impl HandTracker {
 
 impl Drop for HandTracker {
     fn drop(&mut self) {
-        if !self.session.dropped {
+        if !self.session.dropped() {
             unsafe {
                 (self.fp().destroy_hand_tracker)(self.handle);
             }

@@ -1,4 +1,5 @@
 use std::mem::MaybeUninit;
+use std::sync::Mutex;
 use std::{marker::PhantomData, ptr, sync::Arc};
 
 pub use sys::{RenderModelKeyFB, RenderModelLoadInfoFB};
@@ -18,11 +19,20 @@ pub struct Session<G> {
 impl<G> Session<G> {
     /// Manually drop the session
     pub fn drop(&self) -> Result<sys::Result> {
-        unsafe {
-            cvt((self.inner.instance.fp().destroy_session)(
-                self.inner.handle,
-            ))
+        if !self.inner.dropped() {
+            self.inner.set_dropped();
+            unsafe {
+                cvt((self.inner.instance.fp().destroy_session)(
+                    self.inner.handle,
+                ))
+            }
+        } else {
+            Err(sys::Result::ERROR_HANDLE_INVALID)
         }
+    }
+
+    pub fn dropped(&self) -> bool {
+        self.inner.dropped()
     }
 
     /// Access the raw session handle
@@ -472,7 +482,7 @@ impl<G: Graphics> Session<G> {
                 instance,
                 handle,
                 _drop_guard: drop_guard,
-                dropped: false,
+                dropped: false.into(),
             }),
             _marker: PhantomData,
         };
@@ -575,12 +585,22 @@ pub(crate) struct SessionInner {
     pub(crate) instance: Instance,
     pub(crate) handle: sys::Session,
     pub(crate) _drop_guard: DropGuard,
-    pub(crate) dropped: bool,
+    pub(crate) dropped: Mutex<bool>,
+}
+
+impl SessionInner {
+    pub(crate) fn dropped(&self) -> bool {
+        *self.dropped.lock().unwrap()
+    }
+
+    pub(crate) fn set_dropped(&self) {
+        *self.dropped.lock().unwrap() = true;
+    }
 }
 
 impl Drop for SessionInner {
     fn drop(&mut self) {
-        if !self.dropped {
+        if !*self.dropped.lock().unwrap() {
             unsafe {
                 (self.instance.fp().destroy_session)(self.handle);
             }

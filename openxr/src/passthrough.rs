@@ -76,7 +76,7 @@ impl Passthrough {
 
 impl Drop for Passthrough {
     fn drop(&mut self) {
-        if !self.session.dropped {
+        if !self.session.dropped() {
             unsafe {
                 (fp(&self.session).destroy_passthrough)(self.handle);
             }
@@ -153,7 +153,7 @@ impl PassthroughLayer {
 
 impl Drop for PassthroughLayer {
     fn drop(&mut self) {
-        if !self.session.dropped {
+        if !self.session.dropped() {
             unsafe {
                 (fp(&self.session).destroy_passthrough_layer)(self.handle);
             }
